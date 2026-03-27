@@ -58,7 +58,7 @@ export default function App() {
   const [keyword, setKeyword] = useState('');
   const [selectedMood, setSelectedMood] = useState('감동적인');
   const [speechStyle, setSpeechStyle] = useState<'formal' | 'informal'>('formal');
-  const [lastType, setLastType] = useState<'ai' | 'famous'>('ai');
+  const [quoteType, setQuoteType] = useState<'ai' | 'famous'>('ai');
   const [cooldown, setCooldown] = useState(0);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
 
@@ -88,10 +88,10 @@ export default function App() {
     };
   }, [cooldown]);
 
-  const generateQuotes = async (type: 'ai' | 'famous' = lastType, retries = 5, delay = 5000) => {
+  const generateQuotes = async (type: 'ai' | 'famous' = quoteType, retries = 5, delay = 5000) => {
     if (cooldown > 0 && retries === 5) return;
     
-    setLastType(type);
+    setQuoteType(type);
     setIsLoading(true);
     setError(null);
     setIsFallback(false);
@@ -278,7 +278,7 @@ export default function App() {
             </div>
 
             {/* Speech Style Selection */}
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2">
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">말투</label>
               <div className="flex gap-2">
                 <button
@@ -303,30 +303,58 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Quote Type Selection */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">명언 종류</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setQuoteType('famous')}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
+                    quoteType === 'famous' 
+                      ? 'bg-blue-50 text-blue-700 border-2 border-blue-100' 
+                      : 'bg-white text-gray-400 border border-gray-100 hover:border-gray-200'
+                  }`}
+                >
+                  <QuoteIcon className="w-4 h-4" />
+                  유명인 명언
+                </button>
+                <button
+                  onClick={() => setQuoteType('ai')}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
+                    quoteType === 'ai' 
+                      ? 'bg-amber-50 text-amber-700 border-2 border-amber-100' 
+                      : 'bg-white text-gray-400 border border-gray-100 hover:border-gray-200'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  AI 명언
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-4 mb-12">
+        <div className="flex justify-center mb-12">
           <button
-            onClick={() => generateQuotes('famous')}
+            onClick={() => generateQuotes(quoteType)}
             disabled={isLoading || cooldown > 0}
-            className="group relative flex items-center gap-2 px-8 py-4 bg-white text-[#1a1a1a] border border-gray-200 rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 disabled:opacity-50 shadow-sm"
+            className={`group relative flex items-center justify-center gap-3 px-12 py-5 rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 disabled:opacity-50 shadow-lg min-w-[280px] ${
+              quoteType === 'ai' ? 'bg-[#1a1a1a] text-white' : 'bg-white text-[#1a1a1a] border border-gray-200'
+            }`}
           >
-            <QuoteIcon className="w-5 h-5 text-gray-400" />
-            <span className="font-medium tracking-wide">
-              {cooldown > 0 ? `${cooldown}초 후 가능` : '유명인 명언 가져오기'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => generateQuotes('ai')}
-            disabled={isLoading || cooldown > 0}
-            className="group relative flex items-center gap-2 px-8 py-4 bg-[#1a1a1a] text-white rounded-full overflow-hidden transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-            <span className="font-medium tracking-wide">
-              {cooldown > 0 ? `${cooldown}초 후 가능` : 'AI 명언 제조하기'}
+            {quoteType === 'ai' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+            {isLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : quoteType === 'ai' ? (
+              <Sparkles className="w-6 h-6 text-yellow-400" />
+            ) : (
+              <QuoteIcon className="w-6 h-6 text-gray-400" />
+            )}
+            <span className="text-lg font-bold tracking-wide">
+              {cooldown > 0 ? `${cooldown}초 후 가능` : (quoteType === 'ai' ? 'AI 명언 제조하기' : '유명인 명언 가져오기')}
             </span>
           </button>
         </div>
