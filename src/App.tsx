@@ -88,9 +88,21 @@ export default function App() {
     };
   }, [cooldown]);
 
+  // Initial fetch if no cache
+  useEffect(() => {
+    const cached = localStorage.getItem('last_quotes');
+    if (!cached && quotes.length === 0 && !isLoading && !error) {
+      generateQuotes('ai');
+    }
+  }, []);
+
   const generateQuotes = async (type: 'ai' | 'famous' = lastType, retries = 5, delay = 5000) => {
-    if (cooldown > 0 && retries === 5) return;
+    if (cooldown > 0 && retries === 5) {
+      console.log("Cooldown active, skipping generation");
+      return;
+    }
     
+    console.log(`Generating ${type} quotes... (retries left: ${retries})`);
     setLastType(type);
     setIsLoading(true);
     setError(null);
@@ -136,7 +148,7 @@ export default function App() {
       
       setQuotes(result);
       localStorage.setItem('last_quotes', JSON.stringify(result));
-      setCooldown(10); // Increased cooldown to 10s
+      setCooldown(5); // Reduced success cooldown to 5s for better UX
       setIsQuotaExceeded(false);
 
     } catch (err: any) {
@@ -176,7 +188,12 @@ export default function App() {
         setIsFallback(true);
         setError("Gemini API 할당량이 초과되었습니다. 무료 티어의 경우 요청 횟수가 제한될 수 있습니다. 잠시 후 다시 시도해주시거나, 준비된 예비 명언을 확인해주세요.");
       } else {
-        setError("명언을 가져오는 중 오류가 발생했습니다. 다시 시도해주세요.");
+        const apiKey = process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '';
+        if (!apiKey) {
+          setError("API 키가 설정되지 않았습니다. Vercel 환경 변수(Environment Variables)에 GEMINI_API_KEY 또는 GEMINI_API_KEY2를 등록한 후 다시 배포해주세요.");
+        } else {
+          setError(`명언을 가져오는 중 오류가 발생했습니다: ${err?.message || '알 수 없는 오류'}`);
+        }
       }
     } finally {
       setIsLoading(false);
@@ -251,7 +268,11 @@ export default function App() {
                 {MOODS.map((m) => (
                   <button
                     key={m.id}
-                    onClick={() => setSelectedMood(m.id)}
+                    onClick={() => {
+                      setSelectedMood(m.id);
+                      // Trigger generation on mood change
+                      setTimeout(() => generateQuotes(lastType), 0);
+                    }}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
                       selectedMood === m.id 
                         ? 'bg-[#1a1a1a] text-white shadow-md' 
@@ -270,7 +291,10 @@ export default function App() {
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">말투</label>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setSpeechStyle('formal')}
+                  onClick={() => {
+                    setSpeechStyle('formal');
+                    setTimeout(() => generateQuotes(lastType), 0);
+                  }}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
                     speechStyle === 'formal' 
                       ? 'bg-gray-100 text-gray-900 border-2 border-gray-200' 
@@ -280,7 +304,10 @@ export default function App() {
                   정중한 존댓말
                 </button>
                 <button
-                  onClick={() => setSpeechStyle('informal')}
+                  onClick={() => {
+                    setSpeechStyle('informal');
+                    setTimeout(() => generateQuotes(lastType), 0);
+                  }}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
                     speechStyle === 'informal' 
                       ? 'bg-purple-50 text-purple-700 border-2 border-purple-100' 

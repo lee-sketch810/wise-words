@@ -5,11 +5,18 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
+  
+  // Merge Vite env with process.env to ensure Vercel system variables are captured
+  const finalEnv = {
+    ...process.env,
+    ...env
+  };
+
   return {
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY2': JSON.stringify(env.GEMINI_API_KEY2),
+      'process.env.GEMINI_API_KEY': JSON.stringify(finalEnv.GEMINI_API_KEY || ''),
+      'process.env.GEMINI_API_KEY2': JSON.stringify(finalEnv.GEMINI_API_KEY2 || ''),
     },
     resolve: {
       alias: {
