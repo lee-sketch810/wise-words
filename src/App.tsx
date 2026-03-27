@@ -136,8 +136,14 @@ export default function App() {
         }
       });
 
-      const result = JSON.parse(response.text || "[]");
-      if (result.length === 0) throw new Error("Empty response from AI");
+      let text = response.text || "[]";
+      // Robust JSON extraction
+      if (text.includes("```")) {
+        text = text.replace(/```json\n?|```/g, "").trim();
+      }
+      
+      const result = JSON.parse(text);
+      if (!Array.isArray(result) || result.length === 0) throw new Error("Empty or invalid response from AI");
       
       setQuotes(result);
       localStorage.setItem('last_quotes', JSON.stringify(result));
@@ -486,6 +492,9 @@ export default function App() {
 
       <footer className="w-full max-w-4xl mt-24 pt-8 border-t border-gray-100 text-center text-gray-400 text-xs tracking-widest uppercase">
         <p>© 2026 WiseWords AI • Powered by Gemini</p>
+        <p className="mt-2 opacity-50 lowercase tracking-normal">
+          API Status: {(process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY2) ? "Ready" : "Key Missing"}
+        </p>
       </footer>
     </div>
   );
