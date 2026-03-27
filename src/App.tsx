@@ -102,7 +102,8 @@ export default function App() {
     }
     
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const apiKey = process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey });
       const styleInstruction = speechStyle === 'informal' ? "반말(스레드체)로 친근하게" : "존댓말로 정중하게";
       const famousStyleInstruction = "존댓말로 정중하게"; 
       
