@@ -102,11 +102,17 @@ export default function App() {
     }
     
     try {
-      const apiKey = (process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '').trim();
-      
-      if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey === 'MY_SECONDARY_GEMINI_API_KEY') {
+      const keys = [
+        process.env.GEMINI_API_KEY2,
+        process.env.GEMINI_API_KEY
+      ].filter(k => k && k.trim() !== '' && k !== 'MY_GEMINI_API_KEY' && k !== 'MY_SECONDARY_GEMINI_API_KEY') as string[];
+
+      if (keys.length === 0) {
         throw new Error("API_KEY_MISSING");
       }
+
+      // Rotate keys based on retry count
+      const apiKey = keys[retries % keys.length].trim();
 
       const ai = new GoogleGenAI({ apiKey });
       const styleInstruction = speechStyle === 'informal' ? "반말(스레드체)로 친근하게" : "존댓말로 정중하게";
@@ -185,14 +191,17 @@ export default function App() {
 
         const shuffled = [...FALLBACK_QUOTES[type]].sort(() => 0.5 - Math.random());
         setQuotes(shuffled.slice(0, 5));
-        setIsFallback(true);
-        setError("Gemini API 할당량이 초과되었습니다. 무료 티어의 경우 요청 횟수가 제한될 수 있습니다. 잠시 후 다시 시도해주시거나, 준비된 예비 명언을 확인해주세요.");
+        const isDualKey = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY2);
+        const dualKeyMsg = isDualKey ? " (두 개의 API 키를 모두 사용해 보았으나 모두 할당량이 초과되었습니다)" : "";
+        setError(`Gemini API 할당량이 초과되었습니다. 무료 티어의 경우 요청 횟수가 제한될 수 있습니다.${dualKeyMsg} 잠시 후 다시 시도해주시거나, 준비된 예비 명언을 확인해주세요.`);
       } else {
-        const apiKey = (process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '').trim();
-        if (err?.message === "API_KEY_MISSING" || !apiKey) {
-          setError("API 키가 앱에 전달되지 않았습니다. Vercel 설정에서 환경 변수를 등록한 후, 반드시 'Redeploy'를 눌러 다시 빌드해야 적용됩니다.");
-        } else if (apiKey.length < 10 || !apiKey.startsWith('AIza')) {
-          setError("등록된 API 키의 형식이 올바르지 않은 것 같습니다. (보통 AIza...로 시작합니다) 키를 다시 확인해주세요.");
+        const hasKey = (
+          process.env.GEMINI_API_KEY || 
+          process.env.GEMINI_API_KEY2
+        );
+        
+        if (err?.message === "API_KEY_MISSING" || !hasKey) {
+          setError("API 키가 앱에 전달되지 않았습니다. Vercel 설정(Environment Variables)에서 GEMINI_API_KEY를 등록한 후, 반드시 'Redeploy'를 눌러 다시 빌드해야 적용됩니다.");
         } else {
           setError(`명언 생성 실패: ${err?.message || '네트워크 오류가 발생했습니다.'}`);
         }
@@ -494,6 +503,7 @@ export default function App() {
         <p>© 2026 WiseWords AI • Powered by Gemini</p>
         <p className="mt-2 opacity-50 lowercase tracking-normal">
           API Status: {(process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY2) ? "Ready" : "Key Missing"}
+          {(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY2) && " (Dual Key Mode)"}
         </p>
       </footer>
     </div>
