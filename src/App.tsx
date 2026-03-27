@@ -88,21 +88,9 @@ export default function App() {
     };
   }, [cooldown]);
 
-  // Initial fetch if no cache
-  useEffect(() => {
-    const cached = localStorage.getItem('last_quotes');
-    if (!cached && quotes.length === 0 && !isLoading && !error) {
-      generateQuotes('ai');
-    }
-  }, []);
-
   const generateQuotes = async (type: 'ai' | 'famous' = lastType, retries = 5, delay = 5000) => {
-    if (cooldown > 0 && retries === 5) {
-      console.log("Cooldown active, skipping generation");
-      return;
-    }
+    if (cooldown > 0 && retries === 5) return;
     
-    console.log(`Generating ${type} quotes... (retries left: ${retries})`);
     setLastType(type);
     setIsLoading(true);
     setError(null);
@@ -114,7 +102,12 @@ export default function App() {
     }
     
     try {
-      const apiKey = process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '';
+      const apiKey = (process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '').trim();
+      
+      if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || apiKey === 'MY_SECONDARY_GEMINI_API_KEY') {
+        throw new Error("API_KEY_MISSING");
+      }
+
       const ai = new GoogleGenAI({ apiKey });
       const styleInstruction = speechStyle === 'informal' ? "반말(스레드체)로 친근하게" : "존댓말로 정중하게";
       const famousStyleInstruction = "존댓말로 정중하게"; 
@@ -148,7 +141,7 @@ export default function App() {
       
       setQuotes(result);
       localStorage.setItem('last_quotes', JSON.stringify(result));
-      setCooldown(5); // Reduced success cooldown to 5s for better UX
+      setCooldown(10); // Increased cooldown to 10s
       setIsQuotaExceeded(false);
 
     } catch (err: any) {
@@ -188,11 +181,13 @@ export default function App() {
         setIsFallback(true);
         setError("Gemini API 할당량이 초과되었습니다. 무료 티어의 경우 요청 횟수가 제한될 수 있습니다. 잠시 후 다시 시도해주시거나, 준비된 예비 명언을 확인해주세요.");
       } else {
-        const apiKey = process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '';
-        if (!apiKey) {
-          setError("API 키가 설정되지 않았습니다. Vercel 환경 변수(Environment Variables)에 GEMINI_API_KEY 또는 GEMINI_API_KEY2를 등록한 후 다시 배포해주세요.");
+        const apiKey = (process.env.GEMINI_API_KEY2 || process.env.GEMINI_API_KEY || '').trim();
+        if (err?.message === "API_KEY_MISSING" || !apiKey) {
+          setError("API 키가 앱에 전달되지 않았습니다. Vercel 설정에서 환경 변수를 등록한 후, 반드시 'Redeploy'를 눌러 다시 빌드해야 적용됩니다.");
+        } else if (apiKey.length < 10 || !apiKey.startsWith('AIza')) {
+          setError("등록된 API 키의 형식이 올바르지 않은 것 같습니다. (보통 AIza...로 시작합니다) 키를 다시 확인해주세요.");
         } else {
-          setError(`명언을 가져오는 중 오류가 발생했습니다: ${err?.message || '알 수 없는 오류'}`);
+          setError(`명언 생성 실패: ${err?.message || '네트워크 오류가 발생했습니다.'}`);
         }
       }
     } finally {
@@ -268,11 +263,7 @@ export default function App() {
                 {MOODS.map((m) => (
                   <button
                     key={m.id}
-                    onClick={() => {
-                      setSelectedMood(m.id);
-                      // Trigger generation on mood change
-                      setTimeout(() => generateQuotes(lastType), 0);
-                    }}
+                    onClick={() => setSelectedMood(m.id)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all ${
                       selectedMood === m.id 
                         ? 'bg-[#1a1a1a] text-white shadow-md' 
@@ -291,10 +282,7 @@ export default function App() {
               <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">말투</label>
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    setSpeechStyle('formal');
-                    setTimeout(() => generateQuotes(lastType), 0);
-                  }}
+                  onClick={() => setSpeechStyle('formal')}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
                     speechStyle === 'formal' 
                       ? 'bg-gray-100 text-gray-900 border-2 border-gray-200' 
@@ -304,10 +292,7 @@ export default function App() {
                   정중한 존댓말
                 </button>
                 <button
-                  onClick={() => {
-                    setSpeechStyle('informal');
-                    setTimeout(() => generateQuotes(lastType), 0);
-                  }}
+                  onClick={() => setSpeechStyle('informal')}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-sm font-medium transition-all ${
                     speechStyle === 'informal' 
                       ? 'bg-purple-50 text-purple-700 border-2 border-purple-100' 
