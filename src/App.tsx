@@ -162,7 +162,8 @@ export default function App() {
         if (retries > 0) {
           console.log(`Rate limit hit. Retrying in ${delay}ms... (${retries} retries left)`);
           await new Promise(resolve => setTimeout(resolve, delay));
-          return generateQuotes(type, retries - 1, delay * 2);
+          await generateQuotes(type, retries - 1, delay * 2);
+          return;
         }
         
         // Try to load from cache if API fails completely
