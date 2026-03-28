@@ -118,9 +118,17 @@ export default function App() {
       const styleInstruction = speechStyle === 'informal' ? "반말(스레드체)로 친근하게" : "존댓말로 정중하게";
       const famousStyleInstruction = "존댓말로 정중하게"; 
       
+      // Add a random seed to force variety in model output
+      const randomSeed = Math.floor(Math.random() * 1000000);
+      
       const prompt = type === 'famous' 
-        ? `유명한 역사적 인물들의 ${selectedMood} 명언 5개를 한국어로 생성해줘. ${keyword ? `'${keyword}' 키워드와 관련된 내용이어야 해.` : ''} 문체는 ${famousStyleInstruction} 작성해줘. 이전에 나왔던 것과 중복되지 않는 새로운 명언들이어야 해. 잘 알려지지 않은 인물이나 독특한 관점의 명언도 포함해서 다양하게 구성해줘. 반드시 실제 저자의 이름을 정확히 병기해야 해. JSON 배열 형식으로 반환해.`
-        : `현대인들이 깊이 공감할 수 있고, 무릎을 탁 치게 만드는 통찰력 있는 ${selectedMood} 새로운 명언 5개를 한국어로 생성해줘. ${keyword ? `'${keyword}' 키워드와 관련된 내용이어야 해.` : ''} 문체는 ${styleInstruction} 작성해줘. 너무 무겁거나 진지하기만 한 톤보다는, 일상의 미묘한 진실이나 인간관계를 위트 있고 가볍게 꿰뚫는 날카로운 통찰을 담아줘. 뻔한 교훈은 피하고, 매번 다른 주제를 다루어 내용이 다양하게 구성해줘. 저자 이름(author)은 반드시 빈 문자열('')로 설정해줘. 짧은 카테고리를 포함해서 JSON 배열 형식으로 반환해.`;
+        ? `유명한 역사적 인물들의 ${selectedMood} 명언 5개를 한국어로 생성해줘. ${keyword ? `'${keyword}' 키워드와 관련된 내용이어야 해.` : ''} 문체는 ${famousStyleInstruction} 작성해줘. 
+           [중요] 이전에 나왔던 것과 중복되지 않는 완전히 새로운 명언들이어야 해. 잘 알려지지 않은 인물이나 독특한 관점의 명언도 포함해서 매우 다양하게 구성해줘. 
+           랜덤 시드: ${randomSeed}. 매번 다른 인물과 다른 주제를 선택해줘. 반드시 실제 저자의 이름을 정확히 병기해야 해. JSON 배열 형식으로 반환해.`
+        : `현대인들이 깊이 공감할 수 있고, 무릎을 탁 치게 만드는 통찰력 있는 ${selectedMood} 새로운 명언 5개를 한국어로 생성해줘. ${keyword ? `'${keyword}' 키워드와 관련된 내용이어야 해.` : ''} 문체는 ${styleInstruction} 작성해줘. 
+           [중요] 너무 무겁거나 진지하기만 한 톤보다는, 일상의 미묘한 진실이나 인간관계를 위트 있고 가볍게 꿰뚫는 날카로운 통찰을 담아줘. 
+           뻔한 교훈은 피하고, 매번 완전히 다른 주제와 새로운 관점을 다루어 내용이 매우 다양하게 구성해줘. 랜덤 시드: ${randomSeed}. 
+           저자 이름(author)은 반드시 빈 문자열('')로 설정해줘. 짧은 카테고리를 포함해서 JSON 배열 형식으로 반환해.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
