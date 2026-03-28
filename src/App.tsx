@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { motion, AnimatePresence } from "motion/react";
 import { RefreshCw, Quote as QuoteIcon, Sparkles, Loader2, Share2, Check, Copy, Search, Smile, Heart, Brain, Zap, Sun, Ghost, Cloud, Target } from "lucide-react";
@@ -61,18 +61,18 @@ export default function App() {
   const [quoteType, setQuoteType] = useState<'ai' | 'famous'>('ai');
   const [cooldown, setCooldown] = useState(0);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+  const [lastRequestTime, setLastRequestTime] = useState<number>(0);
+  const keyHealth = useRef<Record<string, number>>({}); // apiKey -> timestamp of last 429
 
-  // Initialize from cache
+  // Cache structure: { 'famous_happy_love': [quotes], ... }
+  const [quoteCache, setQuoteCache] = useState<Record<string, Quote[]>>(() => {
+    const saved = localStorage.getItem('quote_cache_v3');
+    return saved ? JSON.parse(saved) : {};
+  });
+
   useEffect(() => {
-    const cached = localStorage.getItem('last_quotes');
-    if (cached) {
-      try {
-        setQuotes(JSON.parse(cached));
-      } catch (e) {
-        console.error("Failed to parse cached quotes", e);
-      }
-    }
-  }, []);
+    localStorage.setItem('quote_cache_v3', JSON.stringify(quoteCache));
+  }, [quoteCache]);
 
   // Cleanup cooldown timer on unmount
   useEffect(() => {
@@ -88,47 +88,68 @@ export default function App() {
     };
   }, [cooldown]);
 
-  const generateQuotes = async (type: 'ai' | 'famous' = quoteType, retries = 5, delay = 5000) => {
-    if (cooldown > 0 && retries === 5) return;
+  const generateQuotes = async (type: 'ai' | 'famous' = quoteType, retries = 1, delay = 5000) => {
+    const cacheKey = `${type}_${selectedMood}_${keyword.trim().toLowerCase()}`;
+    const now = Date.now();
+
+    // 1. Check for cooldown
+    if (cooldown > 0 && retries === 1) return;
+
+    // 2. Aggressive Cache Usage
+    // If we have enough cached quotes (e.g., 10+), use them 90% of the time to save quota.
+    // If we are in a quota exceeded state, use cache 100% of the time.
+    const hasEnoughCache = quoteCache[cacheKey] && quoteCache[cacheKey].length >= 10;
+    const shouldFetchFromAPI = !hasEnoughCache || (Math.random() > 0.9 && !isQuotaExceeded);
+
+    if (!shouldFetchFromAPI && quoteCache[cacheKey] && quoteCache[cacheKey].length >= 5) {
+      console.log("Serving from cache to save quota...");
+      const cachedQuotes = [...quoteCache[cacheKey]].sort(() => 0.5 - Math.random());
+      setQuotes(cachedQuotes.slice(0, 5));
+      setIsFallback(true);
+      setIsLoading(false);
+      // Still set a small cooldown to prevent rapid clicking
+      setCooldown(2);
+      return;
+    }
     
     setQuoteType(type);
     setIsLoading(true);
     setError(null);
     setIsFallback(false);
     
-    // Only clear quotes on the first attempt to avoid flickering during retries
-    if (retries === 5) {
+    if (retries === 1) {
       setQuotes([]);
     }
     
+    let apiKey = "";
     try {
-      const keys = [
+      const allKeys = [
         process.env.GEMINI_API_KEY2,
         process.env.GEMINI_API_KEY
       ].filter(k => k && k.trim() !== '' && k !== 'MY_GEMINI_API_KEY' && k !== 'MY_SECONDARY_GEMINI_API_KEY') as string[];
 
-      if (keys.length === 0) {
+      // Filter out keys that hit 429 recently (within last 2 minutes)
+      const healthyKeys = allKeys.filter(k => {
+        const lastErrorTime = keyHealth.current[k] || 0;
+        return (now - lastErrorTime) > 120000; // 2 minutes
+      });
+
+      const keysToUse = healthyKeys.length > 0 ? healthyKeys : allKeys;
+
+      if (keysToUse.length === 0) {
         throw new Error("API_KEY_MISSING");
       }
 
-      // Rotate keys based on retry count
-      const apiKey = keys[retries % keys.length].trim();
+      // Rotate keys
+      apiKey = keysToUse[Math.floor(Math.random() * keysToUse.length)].trim();
 
       const ai = new GoogleGenAI({ apiKey });
-      const styleInstruction = speechStyle === 'informal' ? "반말(스레드체)로 친근하게" : "존댓말로 정중하게";
-      const famousStyleInstruction = "존댓말로 정중하게"; 
+      const styleInstruction = speechStyle === 'informal' ? "반말(스레드체)" : "존댓말";
       
-      // Add a random seed to force variety in model output
-      const randomSeed = Math.floor(Math.random() * 1000000);
-      
+      // Shorter, more efficient prompt
       const prompt = type === 'famous' 
-        ? `유명한 역사적 인물들의 ${selectedMood} 명언 5개를 한국어로 생성해줘. ${keyword ? `'${keyword}' 키워드와 관련된 내용이어야 해.` : ''} 문체는 ${famousStyleInstruction} 작성해줘. 
-           [중요] 이전에 나왔던 것과 중복되지 않는 완전히 새로운 명언들이어야 해. 잘 알려지지 않은 인물이나 독특한 관점의 명언도 포함해서 매우 다양하게 구성해줘. 
-           랜덤 시드: ${randomSeed}. 매번 다른 인물과 다른 주제를 선택해줘. 반드시 실제 저자의 이름을 정확히 병기해야 해. JSON 배열 형식으로 반환해.`
-        : `현대인들이 깊이 공감할 수 있고, 무릎을 탁 치게 만드는 통찰력 있는 ${selectedMood} 새로운 명언 5개를 한국어로 생성해줘. ${keyword ? `'${keyword}' 키워드와 관련된 내용이어야 해.` : ''} 문체는 ${styleInstruction} 작성해줘. 
-           [중요] 너무 무겁거나 진지하기만 한 톤보다는, 일상의 미묘한 진실이나 인간관계를 위트 있고 가볍게 꿰뚫는 날카로운 통찰을 담아줘. 
-           뻔한 교훈은 피하고, 매번 완전히 다른 주제와 새로운 관점을 다루어 내용이 매우 다양하게 구성해줘. 랜덤 시드: ${randomSeed}. 
-           저자 이름(author)은 반드시 빈 문자열('')로 설정해줘. 짧은 카테고리를 포함해서 JSON 배열 형식으로 반환해.`;
+        ? `역사적 인물의 ${selectedMood} 명언 5개. ${keyword ? `'${keyword}' 관련.` : ''} 한국어, 존댓말. 중복X, 다양하게. JSON: [{text, author, category}]`
+        : `현대적 통찰의 ${selectedMood} 명언 5개. ${keyword ? `'${keyword}' 관련.` : ''} 한국어, ${styleInstruction}. 위트있고 날카롭게. 저자:'', JSON: [{text, author, category}]`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -140,9 +161,9 @@ export default function App() {
             items: {
               type: Type.OBJECT,
               properties: {
-                text: { type: Type.STRING, description: "명언 내용 (한국어)" },
-                author: { type: Type.STRING, description: "저자 이름 (유명인의 경우 실명)" },
-                category: { type: Type.STRING, description: "명언의 카테고리 (한 단어)" }
+                text: { type: Type.STRING },
+                author: { type: Type.STRING },
+                category: { type: Type.STRING }
               },
               required: ["text", "author", "category"]
             }
@@ -160,9 +181,20 @@ export default function App() {
       if (!Array.isArray(result) || result.length === 0) throw new Error("Empty or invalid response from AI");
       
       setQuotes(result);
-      localStorage.setItem('last_quotes', JSON.stringify(result));
-      setCooldown(10); // Increased cooldown to 10s
+      
+      // Update cache
+      setQuoteCache(prev => {
+        const existing = prev[cacheKey] || [];
+        // Keep up to 20 unique quotes per category
+        const combined = [...result, ...existing];
+        const unique = Array.from(new Set(combined.map(q => q.text)))
+          .map(text => combined.find(q => q.text === text)!);
+        return { ...prev, [cacheKey]: unique.slice(0, 20) };
+      });
+
+      setCooldown(5); // Short cooldown on success
       setIsQuotaExceeded(false);
+      setLastRequestTime(now);
 
     } catch (err: any) {
       console.error("Failed to generate quotes:", err);
@@ -179,6 +211,13 @@ export default function App() {
 
       if (isRateLimit) {
         setIsQuotaExceeded(true);
+        setCooldown(60); // Longer cooldown on rate limit (1 minute)
+        
+        // Mark current key as unhealthy
+        if (apiKey) {
+          keyHealth.current[apiKey] = now;
+        }
+
         if (retries > 0) {
           console.log(`Rate limit hit. Retrying in ${delay}ms... (${retries} retries left)`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -187,14 +226,12 @@ export default function App() {
         }
         
         // Try to load from cache if API fails completely
-        const cached = localStorage.getItem('last_quotes');
-        if (cached) {
-          try {
-            setQuotes(JSON.parse(cached));
-            setIsFallback(true);
-            setError("Gemini API 할당량이 초과되어 이전에 보셨던 명언들을 보여드립니다. 잠시 후 다시 시도해주세요.");
-            return;
-          } catch (e) {}
+        if (quoteCache[cacheKey]) {
+          const cachedQuotes = [...quoteCache[cacheKey]].sort(() => 0.5 - Math.random());
+          setQuotes(cachedQuotes.slice(0, 5));
+          setIsFallback(true);
+          setError("Gemini API 할당량이 초과되어 이전에 보셨던 명언들을 보여드립니다. 잠시 후 다시 시도해주세요.");
+          return;
         }
 
         const shuffled = [...FALLBACK_QUOTES[type]].sort(() => 0.5 - Math.random());
@@ -203,6 +240,7 @@ export default function App() {
         const dualKeyMsg = isDualKey ? " (두 개의 API 키를 모두 사용해 보았으나 모두 할당량이 초과되었습니다)" : "";
         setError(`Gemini API 할당량이 초과되었습니다. 무료 티어의 경우 요청 횟수가 제한될 수 있습니다.${dualKeyMsg} 잠시 후 다시 시도해주시거나, 준비된 예비 명언을 확인해주세요.`);
       } else {
+        setCooldown(10); // Cooldown even on generic error to prevent spam
         const hasKey = (
           process.env.GEMINI_API_KEY || 
           process.env.GEMINI_API_KEY2
@@ -431,6 +469,17 @@ export default function App() {
           </motion.div>
         )}
 
+        {isFallback && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-center gap-2 mb-6 text-[10px] text-amber-500 font-bold uppercase tracking-widest bg-amber-50/50 py-1.5 px-4 rounded-full border border-amber-100/50 mx-auto w-fit"
+          >
+            <Sparkles className="w-3 h-3" />
+            <span>{isQuotaExceeded ? '할당량 초과로 인한 예비 모드' : '스마트 캐시 모드 활성'}</span>
+          </motion.div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <AnimatePresence mode="popLayout">
             {quotes.map((quote, index) => (
@@ -513,6 +562,15 @@ export default function App() {
           API Status: {(process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY2) ? "Ready" : "Key Missing"}
           {(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY2) && " (Dual Key Mode)"}
         </p>
+        <button 
+          onClick={() => {
+            localStorage.removeItem('quote_cache_v3');
+            setQuoteCache({});
+          }}
+          className="mt-4 text-[10px] text-gray-300 hover:text-gray-500 underline transition-colors"
+        >
+          Clear Quote Cache
+        </button>
       </footer>
     </div>
   );
